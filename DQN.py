@@ -45,10 +45,12 @@ class ReplayMemory(object):
 class DQN(nn.Module):
     def __init__(self):
         super(DQN, self).__init__()
-        self.affine1 = nn.Linear(4, 128)
-        self.action_head = nn.Linear(128, 2)
+        self.affine1 = nn.Linear(4, 24)
+        self.affine2 = nn.Linear(24, 48)
+        self.action_head = nn.Linear(48, 2)
     def forward(self, x):
         x = F.relu(self.affine1(x))
+        x = F.relu(self.affine2(x))
         action_scores = self.action_head(x)
         return F.softmax(action_scores)
 
@@ -63,7 +65,7 @@ memory = ReplayMemory(10000)
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 200
+EPS_DECAY = 2000
 
 
 steps_done = 0
@@ -72,6 +74,7 @@ def select_action(state):
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
                                math.exp(-1. * steps_done / EPS_DECAY)
+    print(eps_threshold)
     steps_done += 1
     if sample > eps_threshold:
         return model(Variable(state, volatile=True)).data.max(1)[1].view(1, 1)
@@ -96,7 +99,7 @@ def plot_durations():
     plt.pause(0.001)
 
 last_sync = 0
-BATCH_SIZE = 2
+BATCH_SIZE = 64
 def optimize_model():
     global last_sync
     if len(memory) < BATCH_SIZE:
@@ -110,12 +113,6 @@ def optimize_model():
     non_final_mask = ByteTensor(tuple(map(lambda s: s is not None,
                                           batch.next_state)))
 
-    # We don't want to backprop through the expected action values and volatile
-    # will save us on temporarily changing the model parameters'
-    # requires_grad to False!
-    non_final_next_states = Variable(torch.cat([s for s in batch.next_state
-                                                if s is not None]),
-                                     volatile=True)
     state_batch = Variable(torch.cat(batch.state))
     action_batch = Variable(torch.cat(batch.action))
     reward_batch = Variable(torch.cat(batch.reward))
@@ -124,9 +121,17 @@ def optimize_model():
     # columns of actions taken
     state_action_values = model(state_batch).gather(1, action_batch)
 
+    # We don't want to backprop through the expected action values and volatile
+    # will save us on temporarily changing the model parameters'
+    # requires_grad to False!
+    next_state_values = Variable(torch.zeros(BATCH_SIZE,1).type(Tensor))
+
+    temp = [s for s in batch.next_state if s is not None]
+    if not temp:
+        non_final_next_states = Variable(torch.cat(temp), volatile=True)
+        next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
+
     # Compute V(s_{t+1}) for all next states.
-    next_state_values = Variable(torch.zeros(BATCH_SIZE).type(Tensor))
-    next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
     # Now, we don't want to mess up the loss with a volatile flag, so let's
     # clear it. After this, we'll just end up with a Variable that has
     # requires_grad=False
@@ -144,7 +149,7 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
-num_episodes = 10
+num_episodes = 10000
 for i_episode in range(num_episodes):
 
     state = torch.from_numpy(env.reset()).type(Tensor).unsqueeze(0) # state: torch.FloatTensor of size 1xns
@@ -153,7 +158,7 @@ for i_episode in range(num_episodes):
         # env.render()
         action = select_action(state)  # action: torch.LongTensor of size 1x1
         next_state, reward, done, info = env.step(action[0, 0])
-        reward = Tensor([reward])  # reward: torch.FloatTensor of size 1
+        reward = Tensor([[reward]])  # reward: torch.FloatTensor of size 1x1
         if done:
             next_state = None
         else:
