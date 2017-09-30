@@ -101,6 +101,7 @@ def main():
     for step in range(STEP):
         states,actions,rewards,final_r,current_state = roll_out(actor_network,task,SAMPLE_NUMS,value_network,init_state)
         init_state = current_state
+
         actions_var = Variable(torch.Tensor(actions).view(-1,ACTION_DIM))
         states_var = Variable(torch.Tensor(states).view(-1,STATE_DIM))
 
@@ -128,7 +129,7 @@ def main():
         value_network_optim.step()
 
         # Testing
-        if (step + 1) % 50== 0:
+        if (step + 1) % 50 == 0:
                 result = 0
                 test_task = gym.make("CartPole-v0")
                 for test_epi in range(10):

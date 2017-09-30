@@ -169,11 +169,10 @@ for i_episode in range(num_episodes):
 
         memory.push(state, action, next_state, reward)
         state = next_state
-        optimize_model()
-        if done:
-            episode_durations.append(t + 1)
-            plot_durations()
-            break
+
+        if len(memory) > 1000:
+
+
 plt.show()
 
 
